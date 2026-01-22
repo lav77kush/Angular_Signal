@@ -1,17 +1,20 @@
-#Why do we need signals?
+# Why do we need signals?
 
+Before we understand Signals, lets understand about Change Detection
 
-Angular's Change detection strategy - 
+# Angular's Change detection strategy - 
 
-OnPush - it checks change detection of the values only in case of Angular function/events or changing the inputs
+OnPush - it checks change detection of the values only in case of Angular function/events or changing the inputs.
 
 Default- in this case, it checks the change detection every time
 
+## how to manually trigger the change detection if we are suing OnPush
 
-
-##how to manudally trigger the change detection if we are suing OnPush
-
-readonly changeDetector = inject(ChangeDetectorRef)
+`readonly changeDetector = inject(ChangeDetectorRef)`
 
 ChangeDetectorRef is a service which gives access to Angular's Change detection
 
+## Change Detection - What does it do?
+
+Compare the **current**  and  **previous** value of the binding expressions
+if **changed**, update the proper place in the **DOM**

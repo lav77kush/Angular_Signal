@@ -17,7 +17,7 @@ export class AppComponent {
  readonly changeDetector=inject(ChangeDetectorRef);
 
 
-
+// Do nothing function
  doNothing() {}
 
 
