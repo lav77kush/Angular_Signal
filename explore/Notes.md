@@ -1,8 +1,10 @@
-# Why do we need signals?
+## Angular Signals?
+
+---
 
 Before we understand Signals, lets understand about Change Detection
 
-# Angular's Change detection strategy - 
+### Angular's Change detection strategy - 
 
 OnPush - it checks change detection of the values only in case of Angular function/events or changing the inputs.
 
@@ -16,5 +18,5 @@ ChangeDetectorRef is a service which gives access to Angular's Change detection
 
 ## Change Detection - What does it do?
 
-Compare the **current**  and  **previous** value of the binding expressions
-if **changed**, update the proper place in the **DOM**
+ -Compare the **current**  and  **previous** value of the binding expressions
+ -if **changed**, update the proper place in the **DOM**
