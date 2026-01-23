@@ -1,107 +1,115 @@
 
-# Angular Signals?
+# Angular Signals
 
 Before we understand Signals, lets understand about Change Detection
 
+# Angular Signals & Change Detection
 
-## Change Detection - What does it do?
+This note briefly explains Angular change detection, how the `AsyncPipe` interacts with it, when to use `readonly` in TypeScript, and practical examples for observables (async data sources and cross-cutting streams).
 
- - Compare the **current**  and  **previous** value of the binding expressions.
- - if **changed**, update at the proper place in the **DOM** 
+## Change Detection — what and when
 
+What it does
+- Compares the current and previous value of template binding expressions.
+- If a value changed, Angular updates the DOM at the right place.
 
-## Change Detection - When does it happen?
- Depends on the Change Detection strategy-
+When it runs
+- Depends on the change detection strategy.
 
- - **On Push**
-     - Angular input changes
-     - Angular events triggered
-     - When triggered using **ChangeDetectorRef**
-     - A few more selected triggers
-  - **Default**
-      - seems like all the time
-      - But how?
+Default
+- Runs frequently (on many framework events) — templates are re-evaluated during each CD cycle.
 
- ## how to manually trigger the change detection if we are using OnPush
+OnPush
+- A component with `ChangeDetectionStrategy.OnPush` is checked only on specific triggers:
+    - Input reference changes
+    - Template/event handlers (user events)
+    - When calling `ChangeDetectorRef` methods
+    - When marked for check by a helper like the `AsyncPipe`
 
-`readonly changeDetector = inject(ChangeDetectorRef)`
+### Manually triggering CD (OnPush)
 
-ChangeDetectorRef is a service which gives access to Angular's Change detection
+You can inject `ChangeDetectorRef` to trigger checks manually in rare cases:
 
-Why use `readonly`? 
+```ts
+readonly changeDetector = inject(ChangeDetectorRef);
+```
 
-- `readonly` marks a class property as assignable only at declaration or inside the constructor — TypeScript prevents later reassignment at compile time.
-- It's primarily a developer-safety and documentation tool (the modifier is erased at runtime).
+`ChangeDetectorRef` provides methods such as `markForCheck()` and `detectChanges()`.
+
+---
+
+## Why use `readonly` (TypeScript)
+
+- `readonly` marks a class property as assignable only at declaration or inside the constructor. It prevents reassignment at compile time and documents intent.
+- It's a compile-time safety and does not exist at runtime (erased by TypeScript).
 
 Quick examples
 
 ```ts
-// inject pattern (common in standalone components)
+// inject pattern (standalone components)
 readonly changeDetector = inject(ChangeDetectorRef);
 
 // constructor DI shorthand
 constructor(private readonly http: HttpClient) {}
 ```
 
-Notes & gotchas
+Notes & caveats
+- `readonly` is shallow: it prevents reassigning the property reference but does not freeze the object's contents. Use `Readonly<T>` or `Object.freeze()` for deeper immutability.
+- Avoid marking `@Input()` properties `readonly` — Angular assigns inputs at runtime and marking them `readonly` can be confusing for readers.
 
-- `readonly` is shallow: it prevents reassigning the property reference but does not freeze an object's contents (use `Readonly<T>` or `Object.freeze()` for deeper immutability).
-- Avoid marking `@Input()` properties `readonly` — Angular assigns inputs at runtime and marking them `readonly` can be confusing for readers (TS prevents reassignment in code but Angular still sets the property at runtime).
+---
 
+## AsyncPipe (Observable / Promise) and change detection
 
-## How Async Pipe(Obersvable) work in terms of Change Detection?
-
-- The `AsyncPipe` subscribes to an `Observable`/`Promise`, saves the latest value, marks the view for check when a new value arrives, updates the DOM on the next change-detection run, and unsubscribes automatically on destroy.
+One-liner
+- The `AsyncPipe` subscribes to an `Observable`/`Promise`, stores the latest value, marks the view for check when a new value arrives, updates the DOM on the next change-detection run, and unsubscribes automatically when the view is destroyed.
 
 How it works (concise)
-
-1. Template evaluation: when the template sees `{{ some$ | async }}` the pipe subscribes to `some$` (or attaches `then` for a Promise).
-2. On each emission: the pipe stores the emitted value and requests Angular to check the view (internally it marks the view for check so an OnPush component will be included in the next CD run).
-3. Rendering: during the next change-detection run the template reads the pipe's stored value and updates the DOM.
-4. Swap/Destroy: if the Observable reference changes the pipe unsubscribes from the old one; it also unsubscribes automatically when the component is destroyed.
+1. Template evaluation: `{{ some$ | async }}` — the pipe subscribes to `some$` (or attaches `then` for Promises).
+2. On emission: the pipe stores the value and requests Angular to include the component in the next CD run (mark for check).
+3. Rendering: during the next CD cycle the template reads the pipe's stored value and updates the DOM.
+4. Swap / Destroy: if the Observable reference changes the pipe unsubscribes from the old one; it also unsubscribes automatically when destroyed.
 
 OnPush nuance
+- Because `AsyncPipe` marks the view for check, it makes `OnPush` components update without manual `detectChanges()` calls.
+- Marking for check does not force an immediate CD run; if the emission happens entirely outside `NgZone` and no other CD-triggering event runs, the view may still not update until Angular runs CD.
 
-- Because `AsyncPipe` marks the view for check when a new value arrives, it makes `OnPush` components update without manual `ChangeDetectorRef.detectChanges()` calls. Note: marking for check doesn't force an immediate CD run — if the emission happens entirely outside NgZone and no other trigger runs, the view may still not update until Angular runs CD.
+Edge cases / gotchas
+- Emissions outside `NgZone`: ensure Observables run inside the zone or trigger CD manually.
+- Same-value emissions: if the evaluated binding equals the previous value (`===`), Angular won't update the DOM.
+- Multiple `| async` bindings to the same cold Observable create multiple subscriptions (use `shareReplay` or cache the Observable).
 
 Minimal example
 
 ```ts
-// component.ts
 @Component({
     selector: 'my-comp',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    template: `
-        <div>Value: {{ data$ | async }}</div>
-    `
+    template: `<div>Value: {{ data$ | async }}</div>`
 })
 export class MyComp {
-    // an Observable that emits strings
-    data$ = this.service.getData$();
+    data$ = this.service.getData$(); // Observable<string>
 }
 ```
 
-Edge cases / gotchas (short)
+---
 
-- Emissions outside NgZone: if the observable emits outside Angular's zone and no other CD trigger occurs, the DOM may not update until CD runs. Fix: run inside NgZone or trigger CD manually.
-- Same-value emissions: if the evaluated binding result is strictly equal (===) to the previous value, Angular won't update the DOM even though the pipe marked the view for check.
-- Multiple `| async` on the same Observable creates multiple subscriptions. Use shared replay or store the value if you want a single subscription.
+## Limitations of Observable-based change detection
 
+- Angular still walks the component tree and re-evaluates templates during a CD cycle. Even with OnPush, many bindings can be re-evaluated when a single value changes.
+- This can be wasteful for large trees or expensive computations.
 
-## Limitations of Observable-based Change Detection
+How Signals differ (short)
+- Signals provide fine-grained reactivity: only computations and DOM parts that depend on a changed signal update — avoiding full component/template traversal.
+- Trade-offs: Signals improve granularity and predictability but require adopting a new model. Observables remain valuable for async I/O and stream composition. Use interop (`toSignal`, `toObservable`) to combine approaches.
 
-- What happens today  
-    - Angular's change detection walks the component tree and re-evaluates template bindings during a CD cycle. Even with OnPush, the framework still schedules checks and evaluates templates when triggered (the AsyncPipe only marks the view for check).
-- The drawback  
-    - This can be wasteful: many bindings get re-evaluated even if only one piece of data changed, causing unnecessary CPU work for large trees or complex templates.
-- How Signals differ  
-    - Signals provide fine-grained reactivity: only computations and DOM parts that depend on a changed signal are updated, avoiding a full component/template traversal.
-- Trade-offs / notes  
-    - Signals improve update granularity and predictability but require adopting a new model and some migration effort. Observables remain valuable for streams, I/O and event composition; use interop (toSignal, toObservable) to combine both approaches.
-- Practical guidance  
-    - Prefer signals for local, frequently-updated component state or performance-sensitive UI paths. Keep observables for async data sources and cross-cutting streams.
+Practical guidance
+- Prefer signals for local, frequently-updated component state or performance-sensitive UI paths.
+- Keep Observables for async data sources and cross-cutting streams.
 
-## Examples: async data source + cross-cutting stream (concise)
+---
+
+## Examples: concise, copy-pasteable
 
 1) Cached HTTP (avoid duplicate requests)
 
@@ -124,12 +132,12 @@ export class PostsService {
     refresh() { this.posts$ = undefined; }
 }
 
-// component.ts (OnPush)
+// component (OnPush)
 posts$ = this.postsService.getPostsCached();
 // template: <li *ngFor="let p of posts$ | async">{{ p.title }}</li>
 ```
 
-2) App-level state (BehaviorSubject) — cross-cutting
+2) App-level state (BehaviorSubject) — cross-cutting stream
 
 ```ts
 // auth.service.ts
@@ -142,9 +150,9 @@ export class AuthService {
     get snapshot() { return this.currentUserSubject.value; }
 }
 
-// usage in template: <span *ngIf="auth.currentUser$ | async as user">Hi {{ user.name }}</span>
+// usage in template:
+// <span *ngIf="auth.currentUser$ | async as user">Hi {{ user.name }}</span>
 ```
 
-Short notes: use `shareReplay` to cache HTTP responses and avoid duplicate executions. Use `BehaviorSubject` when you need the latest value immediately for late subscribers.
 
 
